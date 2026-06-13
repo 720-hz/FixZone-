@@ -1,24 +1,40 @@
 # FixZone 🚗🔧
 
-> AI-powered car damage detection and repair cost estimation — Android app built as a graduation project.
+> Smart Vehicle Inspection and Repair Estimator — AI-powered Android app for automated car damage detection, severity grading, and repair cost estimation.
+
+**Graduation Project — The British University in Egypt**
+Faculty of Engineering · Electrical Engineering Department · Computer Engineering Programme · June 2026
+
+**Supervisor:** Dr. Sally Saad
+
+**Team:**
+- Rawan Osama Abdelalim Mousa — 224159
+- Ranya Sherif Salah Eldin Elleithy — 226701
+- Mohamed Ayman El Sayed Khedr — 219203
+- Ziad Khaled Eid Abdelsalam — 208605
+- Ramez Ashraf Abdulmoniem Mahmoud Nasr — 225652
 
 ---
 
 ## Overview
 
-FixZone is a Flutter Android application that uses a on-device AI model to automatically detect car damage from photos and estimate repair costs in Egyptian Pounds (EGP). The user photographs their vehicle, the app identifies damage types and severity in real time, and produces a detailed repair report with nearby workshop recommendations — all without an internet connection for the core detection pipeline.
+Vehicle damage inspection is traditionally done manually by mechanics or insurance inspectors — a process that is slow, subjective, and inconsistent. FixZone automates this by letting a user photograph their car, running an on-device YOLO instance segmentation model, and delivering a full damage report with severity grades, EGP repair cost estimates, and nearby workshop recommendations — all within seconds.
+
+The system is not a replacement for professional inspection. It is designed as a practical first-assessment tool for vehicle owners, repair shops, and insurance workflows.
 
 ---
 
 ## Features
 
-- **On-device damage detection** — YOLO11 segmentation model running via TFLite, no server required
+- **On-device AI detection** — YOLOv11m-seg runs locally via TFLite, no internet required for inference
 - **Six damage classes** — dent, scratch, crack, glass shatter, broken lamp, flat tire
-- **Severity grading** — each detected region is classified as Minor, Moderate, or Severe based on its mask area relative to the image
-- **EGP cost estimation** — every class maps to a price range per severity tier
-- **PDF report generation** — exportable repair report with scanned images, detection results, and shop details
-- **Workshop locator** — four Cairo-area repair shops with one-tap Google Maps navigation and direct phone call buttons
-- **Arabic-friendly UI** — the app supports Arabic content throughout, with English-only fallback fields used where PDF rendering requires it
+- **Rule-based severity grading** — Minor / Moderate / Severe, derived from segmentation mask area ratio
+- **EGP cost estimation** — class-specific repair cost ranges, adjusted per severity tier
+- **PDF report** — downloadable report with the scanned image, all detections, costs, and workshop details
+- **Workshop locator** — four Cairo-area repair shops with one-tap Google Maps directions and call buttons
+- **Rule-based chatbot** — in-app assistant covering damage types, costs, report info, and app usage
+- **Firebase backend** — user authentication (email, Google, Facebook, X) and scan history storage
+- **Feedback system** — in-app star rating and comment form
 
 ---
 
@@ -27,99 +43,18 @@ FixZone is a Flutter Android application that uses a on-device AI model to autom
 | Layer | Technology |
 |---|---|
 | Mobile framework | Flutter (Android) |
-| On-device inference | flutter_vision + TFLite (float16) |
-| Model architecture | YOLO11-seg (Ultralytics) |
+| IDE | Android Studio |
+| UI design | Figma |
+| On-device inference | flutter_vision + TFLite float16 |
+| Model architecture | YOLOv11m-seg (Ultralytics) |
 | Training dataset | CarDD |
-| Training environment | Google Colab |
-| Model export | TFLite float16 (primary), ONNX (intermediate) |
+| Training environment | Google Colab (NVIDIA A100) |
+| Training framework | PyTorch + Ultralytics YOLO |
+| Model export | TFLite float16 (`best_float16.tflite`) |
+| Backend | Firebase (Auth + Firestore) |
 | PDF generation | Flutter PDF library |
 | Maps integration | Google Maps (deep link) |
 | Build system | Kotlin DSL (`build.gradle.kts`) |
-
----
-
-## Machine Learning Model
-
-### Architecture
-
-The detection backbone is a **YOLO11 segmentation model** trained on the **CarDD dataset**, a benchmark dataset for car damage segmentation. The model produces per-pixel segmentation masks for each detected damage region alongside bounding boxes and class confidence scores.
-
-### Damage Classes
-
-| Class | Description |
-|---|---|
-| `dent` | Panel deformations and body indentations |
-| `scratch` | Surface paint scratches |
-| `crack` | Structural cracks in body panels or glass |
-| `glass_shatter` | Shattered windscreen or window glass |
-| `lamp_broken` | Damaged headlights or tail lights |
-| `tire_flat` | Flat or punctured tires |
-
-### Severity Thresholds
-
-Severity is determined by the detected mask area as a percentage of the total image area. Thresholds were established through percentile-based analysis, K-Means clustering, and alignment with insurance industry standards.
-
-| Severity | Mask Area |
-|---|---|
-| **MINOR** | < 2% |
-| **MODERATE** | 2% – 8% |
-| **SEVERE** | > 8% |
-
-### Training Configuration
-
-| Parameter | Value |
-|---|---|
-| Best model size | YOLO11l-seg |
-| Best mAP50 achieved | **76.3%** |
-| Smaller variant mAP50 | 71.2% (YOLO11s-seg) |
-| Maximum-accuracy run | yolo11x-seg, 1024 px, 250 epochs |
-| Realistic accuracy ceiling | ~84% mAP50 on CarDD |
-
-> **Note on accuracy expectations:** The CarDD dataset contains inherently difficult classes — dents, scratches, and cracks have low visual contrast and highly variable appearance. Overall mAP50 scores above ~84% are not realistic on this dataset regardless of model size. The 76.3% result with YOLO11l-seg represents a strong performance given these constraints.
-
-### Model Deployment
-
-The final on-device model is exported as **TFLite float16** (`best_float16.tflite`). Large ONNX files (85 MB+) cannot be reliably loaded from Android assets via flutter_vision due to AssetManager compression constraints. The TFLite format bypasses this limitation and provides faster inference on mobile hardware.
-
-A required `noCompress` rule in `app/build.gradle.kts` prevents Android from compressing the `.tflite` asset at build time:
-
-```kotlin
-androidResources {
-    noCompress += listOf("tflite")
-}
-```
-
----
-
-## App Architecture
-
-### Page Structure
-
-The app uses a `res`-suffixed page architecture for the main runtime path. The pages actually executed at runtime are:
-
-- `splashres_page.dart` — entry point, launches the res-page flow
-- `homeres_page.dart` — home screen
-- `reportres_page.dart` — damage detection and report display
-- `historyres_page.dart` — scan history
-
-> **Important for contributors:** Any bug fixes or UI changes must be applied to the `res`-suffixed page files. Changes made to the non-`res` counterparts have no effect at runtime.
-
-### Detection Pipeline
-
-1. User selects or captures a photo
-2. Image is passed to the TFLite model via flutter_vision
-3. Model returns bounding boxes, class IDs, confidence scores, and segmentation masks
-4. A `_toDouble()` helper normalises flutter_vision output (which mixes `String` and `int` types)
-5. Mask area is computed as a fraction of total image pixels to determine severity
-6. Class + severity maps to an EGP price range
-7. Results are displayed on the report page alongside the original image
-
-### PDF Generation
-
-Reports are generated using the Flutter PDF library. Key implementation notes:
-
-- Page width is read from `ctx.page.pageFormat.availableWidth` to avoid `double.infinity` crashes
-- Shop names use an English-only `pdfName` field; Arabic Unicode characters (including star symbols) cause PDF rendering failures and must be avoided in PDF-bound strings
 
 ---
 
@@ -128,17 +63,17 @@ Reports are generated using the Flutter PDF library. Key implementation notes:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/fixzone.git
-cd fixzone
+git clone https://github.com/your-username/FixZone.git
+cd FixZone
 ```
 
 ### 2. Download the model file
 
-The TFLite model is not stored in this repository due to its size. Download it from Google Drive and place it in the correct assets folder:
+The TFLite model is not stored in this repository due to its size. Download it from Google Drive and place it in the assets folder:
 
 📦 **[Download model assets from Google Drive](https://drive.google.com/drive/folders/1GyzjcwX8IhPwI8c4Z_L6ELREobqXC-fl?usp=sharing)**
 
-Place the downloaded `best_float16.tflite` file into:
+Place the downloaded file at:
 
 ```
 assets/models/best_float16.tflite
@@ -160,41 +95,220 @@ flutter run
 
 ---
 
+## Machine Learning Model
+
+### Architecture & Selection
+
+The model is **YOLOv11m-seg** — the medium variant of the YOLO11 instance segmentation family. It was chosen as the practical balance between accuracy and computational cost. Smaller variants miss fine-grained damage like thin cracks and shallow scratches; larger variants demand significantly more memory and training time. YOLOv11m-seg was found to be the ideal middle ground for this task.
+
+The model produces per-pixel segmentation masks alongside bounding boxes and class confidence scores. Masks are used for severity estimation in the Python pipeline; the Flutter app displays bounding boxes only (lighter for mobile rendering).
+
+### Dataset — CarDD
+
+The Car Damage Detection Dataset (CarDD) is a large-scale public benchmark for vehicle damage analysis. It contains approximately 4,000 real-world vehicle images with 9,163 annotated damage instances across six classes, each annotated at the pixel level for instance segmentation.
+
+| Split | Images | Annotated Instances |
+|---|---|---|
+| Train | 2,816 | — |
+| Validation | 810 | 1,744 |
+| Test | 374 | 785 |
+
+### Damage Classes
+
+| Class | Description |
+|---|---|
+| `dent` | Panel deformations and body indentations |
+| `scratch` | Surface paint scratches |
+| `crack` | Structural cracks in body panels |
+| `glass_shatter` | Shattered windscreen or window glass |
+| `lamp_broken` | Damaged headlights or tail lights |
+| `tire_flat` | Flat or punctured tires |
+
+### Training Configuration
+
+| Parameter | Value |
+|---|---|
+| Model | YOLOv11m-seg |
+| Task | Instance segmentation |
+| Approach | Transfer learning |
+| Input image size | 832 × 832 px |
+| Epochs | 100 |
+| Batch size | 4 |
+| Early stopping patience | 25 epochs |
+| Hardware | Google Colab (NVIDIA A100) |
+| Random seed | 42 |
+
+### Results
+
+| Metric | Validation | Test |
+|---|---|---|
+| Box mAP50 | 0.770 | **0.769** |
+| Mask mAP50 | 0.763 | **0.763** |
+| Box Precision | 0.798 | 0.803 |
+| Box Recall | 0.735 | 0.731 |
+
+#### Per-class mask mAP50 (test set)
+
+| Class | mAP50 |
+|---|---|
+| glass_shatter | 0.989 |
+| tire_flat | 0.916 |
+| lamp_broken | 0.901 |
+| dent | 0.636 |
+| scratch | 0.607 |
+| crack | 0.530 |
+
+The model performs strongest on visually distinctive classes (glass shatter, tire flat, lamp broken) and weaker on subtle surface damage (dent, scratch, crack), which is expected given the inherent visual difficulty of these classes and their tendency to blend with normal car body textures.
+
+### Post-Processing
+
+Class-specific confidence thresholds are applied after inference to filter out low-quality detections before severity and cost estimation.
+
+| Class | Confidence Threshold |
+|---|---|
+| Dent | 0.35 |
+| Scratch | 0.35 |
+| Crack | 0.25 |
+| Glass Shatter | 0.30 |
+| Broken Lamp | 0.40 |
+| Flat Tire | 0.40 |
+
+On the test set, this reduced 879 raw predictions to 641 final detections (238 removed).
+
+---
+
+## Severity Estimation
+
+Severity is determined by the ratio of the segmentation mask area to the full image area. Thresholds are applied per class, since different damage types carry different risk levels at the same visual extent. Thresholds are set conservatively — the system has no separate car-part segmentation model, so severity is scored against the full image, not the specific panel or component.
+
+| Class | Minor → Moderate | Moderate → Severe | Additional Rule |
+|---|---|---|---|
+| Scratch | 3.0% | 18.0% | Severe only if widespread |
+| Dent | 2.5% | 12.0% | Severe only if visibly large |
+| Crack | 2.0% | 10.0% | Serious but not instantly severe |
+| Glass Shatter | 4.0% | 20.0% | Severe if large glass region affected |
+| Broken Lamp | 3.0% | 15.0% | Minimum severity is Moderate |
+| Flat Tire | — | — | **Always Severe** |
+
+When multiple damage instances are detected, the overall scan severity is taken from the highest severity level found.
+
+---
+
+## Repair Cost Estimation
+
+Cost ranges were derived from field surveys and direct consultation with Egyptian auto repair workshops. Each class maps to a min–max EGP range; the severity level determines where within that range the estimate falls (lower end = Minor, mid = Moderate, upper end = Severe).
+
+| Class | Min (EGP) | Max (EGP) |
+|---|---|---|
+| Scratch | 300 | 2,000 |
+| Dent | 600 | 3,000 |
+| Crack | 1,200 | 2,200 |
+| Glass Shatter | 750 | 2,000 |
+| Broken Lamp | 1,500 | 2,300 |
+| Flat Tire | 10,000 | 20,000 |
+
+Cost outputs are estimates and not exact quotations. Actual repair prices vary by vehicle brand, spare part availability, workshop location, and market conditions.
+
+---
+
+## App Architecture
+
+### Page Structure
+
+The app uses a `res`-suffixed page architecture for the main runtime path. The entry point is `splashres_page.dart`, which routes directly into the `res`-suffixed pages. The non-`res` counterparts are not reached at runtime.
+
+| Page | Role |
+|---|---|
+| `splashres_page.dart` | App entry point and routing |
+| `homeres_page.dart` | Home screen (camera / upload / navigation) |
+| `reportres_page.dart` | Damage detection result and cost display |
+| `historyres_page.dart` | Previous scan history |
+
+> **For contributors:** All fixes and UI changes must be applied to the `res`-suffixed pages. Changes to non-`res` pages have no effect at runtime.
+
+### Detection Pipeline (Flutter)
+
+1. User selects or captures an image
+2. Image is passed to `best_float16.tflite` via flutter_vision
+3. A `_toDouble()` helper normalises the mixed `String`/`int` output from flutter_vision
+4. Mask area is computed as a fraction of total image pixels → determines severity
+5. Class + severity maps to an EGP cost range
+6. Bounding boxes (not masks) are displayed on the result page alongside the original image
+
+### Model Deployment
+
+The on-device model is `best_float16.tflite`. ONNX files above ~85 MB cannot be reliably loaded from Android assets via flutter_vision due to AssetManager compression limits. TFLite float16 bypasses this and provides faster mobile inference.
+
+A required `noCompress` rule in `app/build.gradle.kts` prevents Android from compressing the asset at build time:
+
+```kotlin
+androidResources {
+    noCompress += listOf("tflite")
+}
+```
+
+### Firebase Integration
+
+Firebase handles user authentication and data persistence. Each user's scan history, generated reports, and account information are stored and retrieved per session. The authentication system supports email/password, Google, Facebook, and X sign-in.
+
+### PDF Generation
+
+Reports are generated using the Flutter PDF library. Key implementation constraints:
+
+- Page width is read from `ctx.page.pageFormat.availableWidth` — using `double.infinity` causes a crash
+- Shop names use an English-only `pdfName` field — Arabic Unicode characters (including star symbols) cause PDF rendering failures
+
+---
+
 ## Repair Shops
 
-The report page surfaces four Cairo-area workshops with integrated Maps and call support:
+Four Cairo-area workshops are embedded in the app with Google Maps directions and direct phone call buttons:
 
-| Shop | Integration |
+| Shop | Area |
 |---|---|
-| Mohamed Ali Mahrous PDR | Google Maps + phone |
-| Auto Fit | Google Maps + phone |
-| Dr Samkary | Google Maps + phone |
-| Speed Pro Auto Service | Google Maps + phone |
+| Mohamed Ali Mahrous PDR | Old Cairo, Salah Salem St |
+| Auto Fit | El-Demerdash, Cairo |
+| Dr Samkary | Nasr City, Cairo |
+| Speed Pro Auto Service | New Cairo |
 
 ---
 
 ## Known Constraints & Lessons Learned
 
-**ONNX vs TFLite:** flutter_vision fails to load ONNX model files larger than ~85 MB from Android assets. Always deploy as TFLite float16.
+**ONNX vs TFLite** — flutter_vision cannot load ONNX files above ~85 MB from Android assets. Always deploy as TFLite float16.
 
-**noCompress rule:** Without the `noCompress` build rule, Android compresses the `.tflite` file and the app silently fails to load it.
+**noCompress rule** — Without this Kotlin DSL rule, Android silently compresses the `.tflite` asset and the model fails to load.
 
-**Type casting:** flutter_vision returns detection output fields as a mix of `String` and `int`. A `_toDouble()` helper is required before any arithmetic on these values.
+**Type casting** — flutter_vision returns detection output as a mix of `String` and `int`. A `_toDouble()` helper is required before any arithmetic on these values.
 
-**PDF Arabic text:** The Flutter PDF library does not render Arabic Unicode symbols reliably. Use a plain English `pdfName` field for any text that will appear in generated PDFs.
+**Arabic text in PDFs** — Arabic Unicode and star symbols fail in the Flutter PDF library. Use a plain English `pdfName` field for all PDF-bound strings.
 
-**res-page architecture:** The `splashres_page.dart` entry point routes directly to `res`-suffixed pages. Non-`res` pages are not reached at runtime.
+**res-page routing** — Non-`res` pages are never reached at runtime. All development work targets the `res`-suffixed files.
 
-**mAP50 ceiling:** CarDD's class difficulty (especially dent and scratch) means mAP50 scores are structurally capped well below 90%. 76–77% with a large model is near the practical ceiling.
+**mAP50 ceiling on CarDD** — Dent, scratch, and crack are inherently difficult classes. Realistic mAP50 on CarDD is structurally capped well below 90%; 76–77% with YOLOv11m-seg is near the practical ceiling for this dataset.
 
 ---
 
-## Project Team
+## Demo
 
-Built as a graduation project. Contributions span machine learning model training, Flutter app development, UI/UX design, and backend integration.
+A full walkthrough of the FixZone application is available in the demo video included in this repository. It covers the complete user flow — from login and image upload through damage detection, severity grading, cost estimation, PDF report generation, and the chatbot interface.
+
+---
+
+## Project Report
+
+The full dissertation — *Smart Vehicle Inspection and Repair Estimator* — is available in this repository as `report.pdf`.
+
+---
+
+## Contact
+
+For questions, collaboration, or any inquiries about this project, feel free to reach out:
+
+📧 **ziadkhaledshatah@gmail.com**
 
 ---
 
 ## License
 
-This project was developed as an academic graduation project. Please contact the team before reusing any component.
+Developed as an academic graduation project at The British University in Egypt. Contact the team before reusing any component.
